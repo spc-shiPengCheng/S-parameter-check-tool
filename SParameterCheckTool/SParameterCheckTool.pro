@@ -4,7 +4,13 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
+QT += printsupport
+
+DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
+
 INCLUDEPATH += ./eigen-5.0.0
+
+QMAKE_CXXFLAGS += -Wa,-mbig-obj
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
@@ -14,13 +20,15 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     st_file_io.cpp \
-    check_sparameter.cpp
+    check_sparameter.cpp \
+    qcustomplot.cpp
 
 HEADERS += \
     mainwindow.h \
     st_file_io.h \
     st_struct_file.h \
-    check_sparameter.h
+    check_sparameter.h \
+    qcustomplot.h
 
 FORMS += \
     mainwindow.ui

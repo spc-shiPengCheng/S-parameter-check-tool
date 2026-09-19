@@ -4,7 +4,6 @@
 #include <QFileDialog>
 #include <QMessageBox>
 
-#include "./st_struct_file.h"
 #include "./st_file_io.h"
 #include "./check_sparameter.h"
 
@@ -29,11 +28,22 @@ MainWindow::~MainWindow()
 void MainWindow::initDialog()
 {
     setWindowTitle(tr("S Parameter Check Tool","散射参数检测工具"));
+
+    // 隐藏水平表头（列标题）
+    ui->tableWidget_portSelect->horizontalHeader()->setVisible(false);
+    // 隐藏垂直表头（行号）
+    ui->tableWidget_portSelect->verticalHeader()->setVisible(false);
+
+    ui->tableWidget_portSelect->setSelectionMode(QAbstractItemView::MultiSelection);
 }
 
 void MainWindow::initSignal()
 {
     connect(ui->pushButton_browse, &QPushButton::clicked, this, &MainWindow::on_loadSParameterFile);
+
+    connect(ui->tableWidget_portSelect, &QTableWidget::cellClicked, this,&MainWindow::on_showSparameterCurve);
+
+    connect(ui->comboBox_SParameetrfile, &QComboBox::currentIndexChanged, this,&MainWindow::on_switchCurrentSnpFile);
 }
 
 void MainWindow::initStyleSheet()
@@ -135,6 +145,11 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 })";
     setStyleSheet(style);
 
+    ui->tableWidget_portSelect->setStyleSheet(
+        /*"QTableWidget::item { background-color: #F0F0F0; }"*/
+        "QTableWidget::item:selected { background-color: #3399FF; color: white; }"
+        );
+
 
 }
 
@@ -153,15 +168,16 @@ void MainWindow::on_loadSParameterFile()
         return; // 用户取消
     }
 
-    struct snp SparameterData;
+    snp SparameterData;
     readSparameter(fileName, SparameterData);
+    m_loadSParameterFile.insert(std::pair<QString, snp>(SparameterData.fileName, SparameterData));
 
     qDebug() << "选择的文件：" << fileName;
     // QFileInfo fileInfo(fileName);
 
 
 
-    ui->comboBox_SParameetrfile->addItem(tr(SparameterData.fileName.toStdString().c_str(),SparameterData.fileName.toStdString().c_str()));
+    ui->comboBox_SParameetrfile->addItem(tr(SparameterData.fileName.toStdString().c_str(),SparameterData.fileName.toStdString().c_str()),QString(SparameterData.fileName));
     ui->label_portNum->setText(QString::number(SparameterData.portNum));
     ui->label_Frequencies->setText(QString("%1 to %2, %3 points").arg(SparameterData.frequency[0]).arg(SparameterData.frequency[SparameterData.frequency.size()-1]).arg(SparameterData.frequency.size()));
     ui->label_portImpedance->setText(QString::number(SparameterData.referenceZ));
@@ -176,5 +192,104 @@ void MainWindow::on_loadSParameterFile()
 
     ui->tableWidget_portSelect->setRowCount(SparameterData.portNum);
     ui->tableWidget_portSelect->setColumnCount(SparameterData.portNum);
+    for(int row=0;row<SparameterData.portNum;row++)
+    {
+        for(int col=0;col<SparameterData.portNum;col++)
+        {
+            ui->tableWidget_portSelect->setItem(row,col, new QTableWidgetItem(QString("S(%1,%2)").arg(row+1).arg(col+1)));
+        }
+    }
+
+    m_currentSnpFileVariant = SparameterData.fileName;
+    ui->comboBox_SParameetrfile->setCurrentIndex(ui->comboBox_SParameetrfile->count()-1);
+    ui->tableWidget_portSelect->clearSelection();
+    ui->customplot->clearGraphs();
+
     // TODO: 在这里读取/导入 fileName
+}
+
+void MainWindow::on_showSparameterCurve()
+{
+    ui->customplot->clearGraphs();
+    QList<QTableWidgetItem*> selectItems = ui->tableWidget_portSelect->selectedItems();
+
+
+    // 假设你已经在界面中放置了一个 QCustomPlot 控件，并命名为 customPlot
+    int graphCount = 0;
+    for (const QTableWidgetItem* item : selectItems) {
+
+        // 2. 添加一个曲线图 (Graph)
+        ui->customplot->addGraph();
+
+        QVector<double> sparameterFrequecny;
+        QVector<double> sparameterMag;
+
+        for(int i=0;i<(int)m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI.size();i++)
+        {
+            sparameterMag.push_back(std::abs(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI[i][item->row()][item->column()]));
+            sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+        }
+        // 3. 为曲线图设置数据
+        ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
+
+        // 4. 为曲线图命名（会显示在图例中）
+        ui->customplot->graph(graphCount)->setName("二次函数");
+
+        // 5. 设置坐标轴标签
+        ui->customplot->xAxis->setLabel("Frequency");
+        ui->customplot->yAxis->setLabel("Mag");
+
+        graphCount++;
+    }
+
+
+
+
+    // 6. 设置坐标轴显示范围
+    // ui->customplot->xAxis->setRange(-1, 1);
+    // ui->customplot->yAxis->setRange(0, 1);
+     ui->customplot->rescaleAxes();
+
+    // 7. 显示图例
+    // ui->customplot->legend->setVisible(true);
+
+    // 8. 刷新图表，使所有设置生效
+    ui->customplot->replot();
+}
+
+void MainWindow::on_switchCurrentSnpFile()
+{
+    m_currentSnpFileVariant = ui->comboBox_SParameetrfile->currentData().toString();
+
+    snp SparameterData = m_loadSParameterFile[m_currentSnpFileVariant];
+    int currentSnpIndex = ui->comboBox_SParameetrfile->findData(m_currentSnpFileVariant);
+    if(currentSnpIndex == -1)
+    {
+        currentSnpIndex = 0;
+    }
+    ui->comboBox_SParameetrfile->setCurrentIndex(currentSnpIndex);
+    ui->label_portNum->setText(QString::number(SparameterData.portNum));
+    ui->label_Frequencies->setText(QString("%1 to %2, %3 points").arg(SparameterData.frequency[0]).arg(SparameterData.frequency[SparameterData.frequency.size()-1]).arg(SparameterData.frequency.size()));
+    ui->label_portImpedance->setText(QString::number(SparameterData.referenceZ));
+    ui->label_reciprocity->setText(isReciprocal(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_reciprocity->setStyleSheet(R"(QLabel{
+    color: black;
+    background-color: #4CAF50; /* 绿色 */
+    border-radius: 4px;        /* 可选：加个圆角更好看 */
+})");
+    ui->label_passivity->setText(isPassive(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_causality->setText(isCausal(SparameterData.sparametrRI) ? "Yes" : "No");
+
+    ui->tableWidget_portSelect->setRowCount(SparameterData.portNum);
+    ui->tableWidget_portSelect->setColumnCount(SparameterData.portNum);
+    for(int row=0;row<SparameterData.portNum;row++)
+    {
+        for(int col=0;col<SparameterData.portNum;col++)
+        {
+            ui->tableWidget_portSelect->setItem(row,col, new QTableWidgetItem(QString("S(%1,%2)").arg(row+1).arg(col+1)));
+        }
+    }
+
+    ui->tableWidget_portSelect->clearSelection();
+    ui->customplot->clearGraphs();
 }

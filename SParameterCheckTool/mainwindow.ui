@@ -219,6 +219,11 @@
         <property name="title">
          <string>GroupBox</string>
         </property>
+        <layout class="QGridLayout" name="gridLayout_4">
+         <item row="0" column="0">
+          <widget class="QCustomPlot" name="customplot" native="true"/>
+         </item>
+        </layout>
        </widget>
       </item>
      </layout>
@@ -237,6 +242,14 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QCustomPlot</class>
+   <extends>QWidget</extends>
+   <header location="global">qcustomplot.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "./st_struct_file.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -12,16 +13,6 @@ QT_END_NAMESPACE
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
-
-    struct ST_SPARAMETER_INFO
-    {
-        QString fileName;
-        int portNum;
-        double referenceImpenance;
-        int frequencyNum;
-        double startFrequecny;
-        double endFrequency;
-    };
 
 
 public:
@@ -38,9 +29,16 @@ private:
 private slots:
     void on_loadSParameterFile();
 
+    void on_showSparameterCurve();
+
+    void on_switchCurrentSnpFile();
+
 private:
     Ui::MainWindow *ui;
 
-    std::vector<ST_SPARAMETER_INFO> m_loadSParameterFile;
+    std::map<QString, snp>m_loadSParameterFile;
+    // std::vector<snp> m_loadSParameterFile;
+
+    QString m_currentSnpFileVariant;
 };
 #endif // MAINWINDOW_H
