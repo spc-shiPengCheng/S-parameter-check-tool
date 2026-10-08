@@ -1,17 +1,14 @@
-#ifndef ST_FILE_IO_H
-#define ST_FILE_IO_H
+/*
+ *Author:spc
+ *Description: Read and write S parameter file.
+ */
+
+#pragma once
 
 #include <QString>
-
-enum class DATAORMODEL
-{
-    DATA = 0,
-    MODEL,
-};
 
 
 void readSparameter(QString filePath,struct snp& data);
 
-void writeSparameter(QString filePath,struct snp& data,DATAORMODEL dataOrModel);
+void writeSparameter(QString filePath,struct snp& data);
 
-#endif // ST_FILE_IO_H

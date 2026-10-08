@@ -1,3 +1,8 @@
+/*
+ *Author:spc
+ *Description: Read and write S parameter file.
+ */
+
 #include "st_file_io.h"
 
 #include <QFile>
@@ -5,7 +10,8 @@
 #include <QDebug>
 
 #include "./st_struct_file.h"
-// #include "Tool/st_convert_syz.h"
+#include "./check_sparameter.h"
+
 
 void readSparameter(QString filePath,struct snp& data)
 {
@@ -309,12 +315,16 @@ void readSparameter(QString filePath,struct snp& data)
 
     file.close(); // 操作完成后关闭文件
 
+    std::vector<std::vector<std::vector<std::complex<double>>>> yparameter;
+    s2y(data.sparametrRI,yparameter,data.referenceZ);
+    data.yparametrRI = yparameter;
+
     std::vector<std::vector<std::vector<std::complex<double>>>> zparameter;
-    // s2z(data.referenceZ,data.sparametrRI,zparameter);
+    s2z(data.sparametrRI,zparameter,data.referenceZ);
     data.zparametrRI = zparameter;
 }
 
-void writeSparameter(QString filePath, snp &data, DATAORMODEL dataOrModel)
+void writeSparameter(QString filePath, snp &data)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -329,40 +339,22 @@ void writeSparameter(QString filePath, snp &data, DATAORMODEL dataOrModel)
         out << "#" << " " << data.frequencyUnitLabel << " " << "S" << " "<< "RI"<< " " <<"R"<< " " << data.referenceZ << "\n";// 自动处理编码，默认 UTF-8
         size_t frequencyCount = data.frequency.size();
 
-        if(dataOrModel == DATAORMODEL::DATA)
+
+        for(int i=0;i<frequencyCount;i++)
         {
-            for(int i=0;i<frequencyCount;i++)
+            lineData = "";
+            lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
+            for(int j=0;j<data.portNum;j++)
             {
-                lineData = "";
-                lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
-                for(int j=0;j<data.portNum;j++)
+                for(int k=0;k<data.portNum;k++)
                 {
-                    for(int k=0;k<data.portNum;k++)
-                    {
-                        lineData += QString::number(data.sparametrRI[i][j][k].real()) + " " + QString::number(data.sparametrRI[i][j][k].imag()) + " ";
-                    }
+                    lineData += QString::number(data.sparametrRI[i][j][k].real()) + " " + QString::number(data.sparametrRI[i][j][k].imag()) + " ";
                 }
-                lineData.chop(1);
-                out << lineData << "\n";
             }
+            lineData.chop(1);
+            out << lineData << "\n";
         }
-        else if(dataOrModel == DATAORMODEL::MODEL)
-        {
-            for(int i=0;i<frequencyCount;i++)
-            {
-                lineData = "";
-                lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
-                for(int j=0;j<data.portNum;j++)
-                {
-                    for(int k=0;k<data.portNum;k++)
-                    {
-                        lineData += QString::number(data.sparametrRIVF[i][j][k].real()) + " " + QString::number(data.sparametrRIVF[i][j][k].imag()) + " ";
-                    }
-                }
-                lineData.chop(1);
-                out << lineData << "\n";
-            }
-        }
+
 
         out.flush();             // 确保数据写入磁盘
     }
@@ -373,70 +365,37 @@ void writeSparameter(QString filePath, snp &data, DATAORMODEL dataOrModel)
         int lineCounter = 0;
         int freqLineCounter =0;
 
-        if(dataOrModel == DATAORMODEL::DATA)
+
+        for(int i=0;i<frequencyCount;i++)
         {
-            for(int i=0;i<frequencyCount;i++)
+            lineData = "";
+            lineCounter = 0;
+            freqLineCounter = 0;
+            lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
+            for(int j=0;j<data.portNum;j++)
             {
-                lineData = "";
-                lineCounter = 0;
-                freqLineCounter = 0;
-                lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
-                for(int j=0;j<data.portNum;j++)
+                for(int k=0;k<data.portNum;k++)
                 {
-                    for(int k=0;k<data.portNum;k++)
+                    lineCounter++;
+                    freqLineCounter++;
+                    lineData += QString::number(data.sparametrRI[i][j][k].real()) + " " + QString::number(data.sparametrRI[i][j][k].imag()) + " ";
+                    if(lineCounter == 4 || freqLineCounter == data.portNum)
                     {
-                        lineCounter++;
-                        freqLineCounter++;
-                        lineData += QString::number(data.sparametrRI[i][j][k].real()) + " " + QString::number(data.sparametrRI[i][j][k].imag()) + " ";
-                        if(lineCounter == 4 || freqLineCounter == data.portNum)
+                        if(freqLineCounter == data.portNum)
                         {
-                            if(freqLineCounter == data.portNum)
-                            {
-                                freqLineCounter = 0;
-                            }
-                            lineCounter = 0;
-                            lineData.chop(1);
-                            out << lineData << "\n";
-                            lineData = "";
+                            freqLineCounter = 0;
                         }
+                        lineCounter = 0;
+                        lineData.chop(1);
+                        out << lineData << "\n";
+                        lineData = "";
                     }
                 }
-                lineData.chop(1);
-                out << lineData << "\n";
             }
+            lineData.chop(1);
+            out << lineData << "\n";
         }
-        else if(dataOrModel == DATAORMODEL::MODEL)
-        {
-            for(int i=0;i<frequencyCount;i++)
-            {
-                lineData = "";
-                lineCounter = 0;
-                freqLineCounter = 0;
-                lineData += QString::number(data.frequency[i]/data.frequencyUnit) + " ";
-                for(int j=0;j<data.portNum;j++)
-                {
-                    for(int k=0;k<data.portNum;k++)
-                    {
-                        lineCounter++;
-                        freqLineCounter++;
-                        lineData += QString::number(data.sparametrRIVF[i][j][k].real()) + " " + QString::number(data.sparametrRIVF[i][j][k].imag()) + " ";
-                        if(lineCounter == 4 || freqLineCounter == data.portNum)
-                        {
-                            if(freqLineCounter == data.portNum)
-                            {
-                                freqLineCounter = 0;
-                            }
-                            lineCounter = 0;
-                            lineData.chop(1);
-                            out << lineData << "\n";
-                            lineData = "";
-                        }
-                    }
-                }
-                lineData.chop(1);
-                out << lineData << "\n";
-            }
-        }
+
 
         out.flush();             // 确保数据写入磁盘
     }

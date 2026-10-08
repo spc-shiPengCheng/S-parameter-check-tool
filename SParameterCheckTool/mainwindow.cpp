@@ -1,3 +1,7 @@
+/*
+ * Author: spc
+ * Description: Main ui file.
+ */
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
@@ -35,6 +39,39 @@ void MainWindow::initDialog()
     ui->tableWidget_portSelect->verticalHeader()->setVisible(false);
 
     ui->tableWidget_portSelect->setSelectionMode(QAbstractItemView::MultiSelection);
+
+    ui->comboBox_parameterType->addItem("S","S");
+    ui->comboBox_parameterType->addItem("Y","Y");
+    ui->comboBox_parameterType->addItem("Z","Z");
+
+    ui->comboBox_dataType->addItem("Amplitude/Phase","MAG");
+    ui->comboBox_dataType->addItem("Real/Imag","RI");
+    ui->comboBox_dataType->addItem("Db/Phase","DB");
+
+    ui->customplot->setContextMenuPolicy(Qt::CustomContextMenu);
+    // 允许拖拽和滚轮缩放
+    ui->customplot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+
+    // 允许水平和垂直方向拖拽
+    ui->customplot->axisRect()->setRangeDrag(Qt::Horizontal | Qt::Vertical);
+
+    // 允许水平和垂直方向滚轮缩放
+    ui->customplot->axisRect()->setRangeZoom(Qt::Horizontal | Qt::Vertical);
+
+    m_vLine = new QCPItemLine(ui->customplot);
+    m_vLine->setPen(QPen(Qt::gray, 1, Qt::DashLine));
+    m_vLine->setVisible(false);
+
+    m_hLine = new QCPItemLine(ui->customplot);
+    m_hLine->setPen(QPen(Qt::gray, 1, Qt::DashLine));
+    m_hLine->setVisible(false);
+
+    m_cursorText = new QCPItemText(ui->customplot);
+    m_cursorText->setPositionAlignment(Qt::AlignLeft | Qt::AlignBottom);
+    m_cursorText->setPadding(QMargins(5, 5, 5, 5));
+    m_cursorText->setBrush(QBrush(QColor(255, 255, 220, 220)));
+    m_cursorText->setPen(QPen(Qt::gray));
+    m_cursorText->setVisible(false);
 }
 
 void MainWindow::initSignal()
@@ -44,6 +81,20 @@ void MainWindow::initSignal()
     connect(ui->tableWidget_portSelect, &QTableWidget::cellClicked, this,&MainWindow::on_showSparameterCurve);
 
     connect(ui->comboBox_SParameetrfile, &QComboBox::currentIndexChanged, this,&MainWindow::on_switchCurrentSnpFile);
+
+    connect(ui->comboBox_parameterType, &QComboBox::currentIndexChanged, this,&MainWindow::on_showSparameterCurve);
+
+    connect(ui->comboBox_dataType, &QComboBox::currentIndexChanged, this,&MainWindow::on_showSparameterCurve);
+
+    connect(ui->tabWidget_character, &QTabWidget::currentChanged, this, &MainWindow::on_switchCharacterTab);
+
+    connect(ui->pushButton_plotSingularCurve, &QPushButton::clicked, this, &MainWindow::on_plotSingularCurve);
+
+    connect(ui->pushButton_passivityEnforce, &QPushButton::clicked, this, &MainWindow::on_passivityEnforce);
+
+    connect(ui->customplot, &QCustomPlot::customContextMenuRequested, this, &MainWindow::on_customPlotContextMenu);
+
+    connect(ui->customplot, &QCustomPlot::mouseMove, this, &MainWindow::on_mouseMove);
 }
 
 void MainWindow::initStyleSheet()
@@ -211,33 +262,120 @@ void MainWindow::on_loadSParameterFile()
 void MainWindow::on_showSparameterCurve()
 {
     ui->customplot->clearGraphs();
+
+
     QList<QTableWidgetItem*> selectItems = ui->tableWidget_portSelect->selectedItems();
 
+    int graphColorCount = selectItems.size();
+    if(ui->comboBox_dataType->currentData().toString() == "RI")
+    {
+        graphColorCount = graphColorCount*2;
+    }
+
+
+
+
+    std::vector<std::vector<std::vector<std::complex<double>>>> currentParameter;
+    if(ui->comboBox_parameterType->currentData().toString() == "S")
+    {
+        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI;
+    }
+    else if(ui->comboBox_parameterType->currentData().toString() == "Y")
+    {
+        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].yparametrRI;
+    }
+    else if(ui->comboBox_parameterType->currentData().toString() == "Z")
+    {
+        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].zparametrRI;
+    }
 
     // 假设你已经在界面中放置了一个 QCustomPlot 控件，并命名为 customPlot
     int graphCount = 0;
     for (const QTableWidgetItem* item : selectItems) {
 
         // 2. 添加一个曲线图 (Graph)
-        ui->customplot->addGraph();
+        QCPGraph* graph = ui->customplot->addGraph();
+        // 自动生成颜色：色相均匀分布，饱和度和亮度固定
+        int hue = ((graphCount+1) * 360 / graphColorCount) % 360;
+        QColor color = QColor::fromHsv(hue, 200, 255);
+        graph->setPen(QPen(color, 2));   // 线宽 2
 
-        QVector<double> sparameterFrequecny;
-        QVector<double> sparameterMag;
-
-        for(int i=0;i<(int)m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI.size();i++)
+        if(ui->comboBox_dataType->currentData().toString() == "MAG")
         {
-            sparameterMag.push_back(std::abs(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI[i][item->row()][item->column()]));
-            sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+            QVector<double> sparameterFrequecny;
+            QVector<double> sparameterMag;
+
+            for(int i=0;i<(int)currentParameter.size();i++)
+            {
+                sparameterMag.push_back(std::abs(currentParameter[i][item->row()][item->column()]));
+                sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+            }
+            // 3. 为曲线图设置数据
+            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
+
+            // 4. 为曲线图命名（会显示在图例中）
+            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)").arg(item->row()+1).arg(item->column()+1));
+
+            // 5. 设置坐标轴标签
+            ui->customplot->xAxis->setLabel("Frequency");
+            ui->customplot->yAxis->setLabel("Mag");
         }
-        // 3. 为曲线图设置数据
-        ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
+        else if(ui->comboBox_dataType->currentData().toString() == "RI")
+        {
+            QVector<double> sparameterFrequecny;
+            QVector<double> sparameterReal;
+            QVector<double> sparameterImag;
 
-        // 4. 为曲线图命名（会显示在图例中）
-        ui->customplot->graph(graphCount)->setName("二次函数");
+            for(int i=0;i<(int)currentParameter.size();i++)
+            {
+                sparameterReal.push_back(currentParameter[i][item->row()][item->column()].real());
+                sparameterImag.push_back(currentParameter[i][item->row()][item->column()].imag());
+                sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+            }
+            // 3. 为曲线图设置数据
+            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterReal);
 
-        // 5. 设置坐标轴标签
-        ui->customplot->xAxis->setLabel("Frequency");
-        ui->customplot->yAxis->setLabel("Mag");
+            // 4. 为曲线图命名（会显示在图例中）
+            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-real").arg(item->row()+1).arg(item->column()+1));
+
+            graphCount++;
+            // 2. 添加一个曲线图 (Graph)
+            QCPGraph* graph = ui->customplot->addGraph();
+            // 自动生成颜色：色相均匀分布，饱和度和亮度固定
+            int hue = ((graphCount+1) * 360 / graphColorCount) % 360;
+            QColor color = QColor::fromHsv(hue, 200, 255);
+            graph->setPen(QPen(color, 2));   // 线宽 2
+
+            // 3. 为曲线图设置数据
+            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterImag);
+
+            // 4. 为曲线图命名（会显示在图例中）
+            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-imag").arg(item->row()+1).arg(item->column()+1));
+
+            // 5. 设置坐标轴标签
+            ui->customplot->xAxis->setLabel("Frequency");
+            ui->customplot->yAxis->setLabel("Real/Imag");
+        }
+        else if(ui->comboBox_dataType->currentData().toString() == "DB")
+        {
+            QVector<double> sparameterFrequecny;
+            QVector<double> sparameterDB;
+
+            for(int i=0;i<(int)currentParameter.size();i++)
+            {
+                sparameterDB.push_back(20*std::log(abs(currentParameter[i][item->row()][item->column()])));
+                sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+            }
+            // 3. 为曲线图设置数据
+            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterDB);
+
+            // 4. 为曲线图命名（会显示在图例中）
+            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-db").arg(item->row()+1).arg(item->column()+1));
+
+            // 5. 设置坐标轴标签
+            ui->customplot->xAxis->setLabel("Frequency");
+            ui->customplot->yAxis->setLabel("DB");
+        }
 
         graphCount++;
     }
@@ -251,7 +389,7 @@ void MainWindow::on_showSparameterCurve()
      ui->customplot->rescaleAxes();
 
     // 7. 显示图例
-    // ui->customplot->legend->setVisible(true);
+    ui->customplot->legend->setVisible(true);
 
     // 8. 刷新图表，使所有设置生效
     ui->customplot->replot();
@@ -292,4 +430,176 @@ void MainWindow::on_switchCurrentSnpFile()
 
     ui->tableWidget_portSelect->clearSelection();
     ui->customplot->clearGraphs();
+}
+
+void MainWindow::on_switchCharacterTab()
+{
+    QWidget* currentPage = ui->tabWidget_character->currentWidget();
+
+    if(currentPage == ui->tab_passivity)
+    {
+
+    }
+
+}
+
+void MainWindow::on_plotSingularCurve()
+{
+    ui->customplot->clearGraphs();
+
+
+    // 2. 添加一个曲线图 (Graph)
+    QCPGraph* graph = ui->customplot->addGraph();
+    // 自动生成颜色：色相均匀分布，饱和度和亮度固定
+    int hue = (1 * 360 / 1) % 360;
+    QColor color = QColor::fromHsv(hue, 200, 255);
+    graph->setPen(QPen(color, 2));   // 线宽 2
+
+    QVector<double> sparameterFrequecny;
+    QVector<double> sparameterSingularValue;
+
+    std::vector<double> singularValue = getSingular(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI);
+    for(int i=0;i<(int)m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI.size();i++)
+    {
+        sparameterSingularValue.push_back(singularValue[i]);
+        sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+    }
+    // 3. 为曲线图设置数据
+    ui->customplot->graph(0)->setData(sparameterFrequecny, sparameterSingularValue);
+
+    // 4. 为曲线图命名（会显示在图例中）
+    ui->customplot->graph(0)->setName(QString("Singular Value"));
+
+    // 5. 设置坐标轴标签
+    ui->customplot->xAxis->setLabel("Frequency");
+    ui->customplot->yAxis->setLabel("Singular Value");
+
+    // 6. 设置坐标轴显示范围
+    // ui->customplot->xAxis->setRange(-1, 1);
+    // ui->customplot->yAxis->setRange(0, 1);
+    // ui->customplot->rescaleAxes();
+    auto [min_it, max_it] = std::minmax_element(singularValue.begin(), singularValue.end());
+    ui->customplot->yAxis->setRange(*min_it*0.8, *max_it*1.2); // 根据实际需求设定一个合理的范围
+
+    // 7. 显示图例
+    ui->customplot->legend->setVisible(true);
+
+    // 2. 让 Y 轴刻度显示更多小数位，方便观察真实数值
+    // ui->customplot->yAxis->setNumberFormat("f");
+    // ui->customplot->yAxis->setNumberPrecision(8); // 显示 8 位小数
+    // ui->customplot->rescaleAxes();
+    ui->customplot->xAxis->rescale();
+
+    // 8. 刷新图表，使所有设置生效
+    ui->customplot->replot();
+}
+
+void MainWindow::on_passivityEnforce()
+{
+    std::vector<std::vector<std::vector<std::complex<double>>>> passiveSparameter;
+    passicityEnforce(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI, passiveSparameter);
+    m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI = passiveSparameter;
+
+    std::vector<std::vector<std::vector<std::complex<double>>>> yparameter;
+    s2y(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI,yparameter,m_loadSParameterFile[m_currentSnpFileVariant].referenceZ);
+    m_loadSParameterFile[m_currentSnpFileVariant].yparametrRI = yparameter;
+
+    std::vector<std::vector<std::vector<std::complex<double>>>> zparameter;
+    s2z(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI,zparameter,m_loadSParameterFile[m_currentSnpFileVariant].referenceZ);
+    m_loadSParameterFile[m_currentSnpFileVariant].zparametrRI = zparameter;
+}
+
+void MainWindow::on_customPlotContextMenu(const QPoint &pos)
+{
+    QMenu menu(this);
+
+    QMenu *exportMenu = menu.addMenu(tr("导出图片"));
+
+    QAction *pngAction     = exportMenu->addAction(tr("PNG (标准)"));
+    QAction *pngHdAction   = exportMenu->addAction(tr("PNG (高清 2x)"));
+    QAction *pngTransAction= exportMenu->addAction(tr("PNG (透明背景)"));
+    exportMenu->addSeparator();
+    QAction *jpgAction     = exportMenu->addAction(tr("JPG"));
+    QAction *bmpAction     = exportMenu->addAction(tr("BMP"));
+    exportMenu->addSeparator();
+    QAction *pdfAction     = exportMenu->addAction(tr("PDF (矢量)"));
+
+    QAction *resetAction     = menu.addAction(tr("重置"));
+
+    QAction *selected = menu.exec(ui->customplot->mapToGlobal(pos));
+    if (!selected) return;
+
+    if (selected == resetAction) {
+        ui->customplot->rescaleAxes();
+        ui->customplot->replot();
+        return;
+    }
+
+    QString filter;
+    QString defaultPath = QDir::homePath() + "/plot";
+
+    if (selected == pngAction || selected == pngHdAction || selected == pngTransAction) {
+        filter = "PNG 图片 (*.png)";
+        defaultPath += ".png";
+    } else if (selected == jpgAction) {
+        filter = "JPG 图片 (*.jpg)";
+        defaultPath += ".jpg";
+    } else if (selected == bmpAction) {
+        filter = "BMP 图片 (*.bmp)";
+        defaultPath += ".bmp";
+    } else if (selected == pdfAction) {
+        filter = "PDF 文件 (*.pdf)";
+        defaultPath += ".pdf";
+    }
+
+    QString fileName = QFileDialog::getSaveFileName(this, tr("导出图片"), defaultPath, filter);
+    if (fileName.isEmpty()) return;
+
+    bool ok = false;
+
+    if (selected == pngAction) {
+        ok = ui->customplot->savePng(fileName);
+    } else if (selected == pngHdAction) {
+        ok = ui->customplot->savePng(fileName, 0, 0, 2.0);  // 2 倍分辨率
+    } else if (selected == pngTransAction) {
+        // 临时把背景设为透明
+        QBrush oldBrush = ui->customplot->background();
+        ui->customplot->setBackground(QBrush(Qt::NoBrush));
+        ok = ui->customplot->savePng(fileName);
+        ui->customplot->setBackground(oldBrush);  // 恢复
+    } else if (selected == jpgAction) {
+        ok = ui->customplot->saveJpg(fileName, 0, 0, 1.0, 90);
+    } else if (selected == bmpAction) {
+        ok = ui->customplot->saveBmp(fileName);
+    } else if (selected == pdfAction) {
+        ok = ui->customplot->savePdf(fileName);
+    }
+
+    if (!ok) {
+        QMessageBox::warning(this, tr("导出失败"), tr("无法保存文件。"));
+    } else {
+        statusBar()->showMessage(tr("已导出: %1").arg(fileName), 3000);
+    }
+}
+
+void MainWindow::on_mouseMove(QMouseEvent *event)
+{
+    double x = ui->customplot->xAxis->pixelToCoord(event->pos().x());
+    double y = ui->customplot->yAxis->pixelToCoord(event->pos().y());
+
+    m_vLine->start->setCoords(x, ui->customplot->yAxis->range().lower);
+    m_vLine->end->setCoords(x, ui->customplot->yAxis->range().upper);
+    m_vLine->setVisible(true);
+
+    m_hLine->start->setCoords(ui->customplot->xAxis->range().lower, y);
+    m_hLine->end->setCoords(ui->customplot->xAxis->range().upper, y);
+    m_hLine->setVisible(true);
+
+    m_cursorText->position->setCoords(x, y);
+    m_cursorText->setText(QString("x = %1\ny = %2")
+                              .arg(x, 0, 'f', 4)
+                              .arg(y, 0, 'f', 4));
+    m_cursorText->setVisible(true);
+
+    ui->customplot->replot(QCustomPlot::rpQueuedReplot);
 }

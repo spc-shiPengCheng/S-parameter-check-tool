@@ -1,3 +1,7 @@
+/*
+ * Author: spc
+ * Description: Check S parameter characteristics.
+ */
 #include "check_sparameter.h"
 
 #include <QDebug>
@@ -107,4 +111,144 @@ std::vector<double> getSingular(const std::vector<std::vector<std::vector<std::c
     }
 
     return singularData;
+}
+
+void s2y(const std::vector<std::vector<std::vector<std::complex<double> > > > &sParameterDataRI,
+         std::vector<std::vector<std::vector<std::complex<double> > > > &yParameterDataRI,
+         double referenceZ)
+{
+    if(sParameterDataRI.empty())
+    {
+        qDebug() << QString("S parameter is empty.");
+        return ;
+    }
+
+    size_t portNum = sParameterDataRI[0].size();
+    size_t frequencyNum = sParameterDataRI.size();
+    yParameterDataRI.clear();
+
+    Eigen::MatrixXcd I = Eigen::MatrixXcd::Identity(portNum,portNum);
+    for(int freq=0;freq<frequencyNum;freq++)
+    {
+        Eigen::MatrixXcd SMatrix(portNum,portNum);
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                SMatrix(i,j) = sParameterDataRI[freq][i][j];
+            }
+        }
+
+        Eigen::MatrixXcd YMatrix = 1/referenceZ * (I + SMatrix).inverse() * (I - SMatrix);
+
+        std::vector<std::vector<std::complex<double>>> yParameter(portNum,
+                                                                  std::vector<std::complex<double>>(portNum,0));
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                yParameter[i][j] = YMatrix(i,j);
+            }
+        }
+        yParameterDataRI.push_back(yParameter);
+    }
+
+}
+
+void s2z(const std::vector<std::vector<std::vector<std::complex<double> > > > &sParameterDataRI,
+         std::vector<std::vector<std::vector<std::complex<double> > > > &zParameterDataRI,
+         double referenceZ)
+{
+    if(sParameterDataRI.empty())
+    {
+        qDebug() << QString("S parameter is empty.");
+        return ;
+    }
+
+    size_t portNum = sParameterDataRI[0].size();
+    size_t frequencyNum = sParameterDataRI.size();
+    zParameterDataRI.clear();
+
+    Eigen::MatrixXcd I = Eigen::MatrixXcd::Identity(portNum,portNum);
+    for(int freq=0;freq<frequencyNum;freq++)
+    {
+        Eigen::MatrixXcd SMatrix(portNum,portNum);
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                SMatrix(i,j) = sParameterDataRI[freq][i][j];
+            }
+        }
+
+        Eigen::MatrixXcd ZMatrix = referenceZ * (I - SMatrix).inverse() * (I + SMatrix);
+
+        std::vector<std::vector<std::complex<double>>> zParameter(portNum,
+                                                                  std::vector<std::complex<double>>(portNum,0));
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                zParameter[i][j] = ZMatrix(i,j);
+            }
+        }
+        zParameterDataRI.push_back(zParameter);
+    }
+}
+
+void passicityEnforce(const std::vector<std::vector<std::vector<std::complex<double> > > > &sParameterDataRI,
+                      std::vector<std::vector<std::vector<std::complex<double> > > > &sParameterDataRIPassive)
+{
+    if(sParameterDataRI.empty())
+    {
+        qDebug() << QString("S parameter is empty.");
+        return ;
+    }
+
+    size_t portNum = sParameterDataRI[0].size();
+    size_t frequencyNum = sParameterDataRI.size();
+    sParameterDataRIPassive.clear();
+    sParameterDataRIPassive = sParameterDataRI;
+
+    for(int freq=0;freq<frequencyNum;freq++)
+    {
+        Eigen::MatrixXcd SMatrix(portNum,portNum);
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                SMatrix(i,j) = sParameterDataRI[freq][i][j];
+            }
+        }
+
+        Eigen::JacobiSVD<Eigen::MatrixXcd> svd(SMatrix, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        Eigen::VectorXd  singularValuesVec = svd.singularValues();
+        Eigen::MatrixXd singularValues = singularValuesVec.asDiagonal();   // 2x2 对角矩阵
+        double maxSingular = singularValues.maxCoeff();
+        if(maxSingular > 1)
+        {
+            for(int i=0;i<portNum;i++)
+            {
+                for(int j=0;j<portNum;j++)
+                {
+                    if(singularValues(i,j) > 1)
+                    {
+                        singularValues(i,j) = 1;
+                    }
+                }
+            }
+            Eigen::MatrixXcd SMatrixPassive = svd.matrixU() * singularValues * svd.matrixV().adjoint();
+
+            std::vector<std::vector<std::complex<double>>> sParameter(portNum,
+                                                                      std::vector<std::complex<double>>(portNum,0));
+            for(int i=0;i<portNum;i++)
+            {
+                for(int j=0;j<portNum;j++)
+                {
+                    sParameter[i][j] = SMatrixPassive(i,j);
+                }
+            }
+            sParameterDataRIPassive[freq] = sParameter;
+        }
+    }
 }
