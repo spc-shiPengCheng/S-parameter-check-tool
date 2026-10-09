@@ -2,6 +2,7 @@
  * Author: spc
  * Description: Main ui file.
  */
+
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
@@ -32,6 +33,7 @@ MainWindow::~MainWindow()
 void MainWindow::initDialog()
 {
     setWindowTitle(tr("S Parameter Check Tool","散射参数检测工具"));
+    setMinimumSize(1686,1131);
 
     // 隐藏水平表头（列标题）
     ui->tableWidget_portSelect->horizontalHeader()->setVisible(false);
@@ -95,6 +97,8 @@ void MainWindow::initSignal()
     connect(ui->customplot, &QCustomPlot::customContextMenuRequested, this, &MainWindow::on_customPlotContextMenu);
 
     connect(ui->customplot, &QCustomPlot::mouseMove, this, &MainWindow::on_mouseMove);
+
+    connect(ui->checkBox_VSWR, &QCheckBox::toggled, this, &MainWindow::on_VSWRChecked);
 }
 
 void MainWindow::initStyleSheet()
@@ -128,10 +132,7 @@ QComboBox, QLineEdit {
 QComboBox:hover, QLineEdit:hover {
     border: 1px solid #007ACC; /* 悬停时边框变蓝 */
 }
-QComboBox::drop-down {
-    border: none;
-    width: 20px;
-}
+
 
 /* 4. 按钮 (Browse) */
 QPushButton {
@@ -232,14 +233,24 @@ void MainWindow::on_loadSParameterFile()
     ui->label_portNum->setText(QString::number(SparameterData.portNum));
     ui->label_Frequencies->setText(QString("%1 to %2, %3 points").arg(SparameterData.frequency[0]).arg(SparameterData.frequency[SparameterData.frequency.size()-1]).arg(SparameterData.frequency.size()));
     ui->label_portImpedance->setText(QString::number(SparameterData.referenceZ));
-    ui->label_reciprocity->setText(isReciprocal(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_reciprocity->setText(isReciprocal(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
     ui->label_reciprocity->setStyleSheet(R"(QLabel{
     color: black;
     background-color: #4CAF50; /* 绿色 */
     border-radius: 4px;        /* 可选：加个圆角更好看 */
 })");
-    ui->label_passivity->setText(isPassive(SparameterData.sparametrRI) ? "Yes" : "No");
-    ui->label_causality->setText(isCausal(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_passivity->setText(isPassive(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
+    ui->label_passivity->setStyleSheet(R"(QLabel{
+    color: black;
+    background-color: #4CAF50; /* 绿色 */
+    border-radius: 4px;        /* 可选：加个圆角更好看 */
+})");
+    ui->label_causality->setText(isCausal(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
+    ui->label_causality->setStyleSheet(R"(QLabel{
+    color: black;
+    background-color: #4CAF50; /* 绿色 */
+    border-radius: 4px;        /* 可选：加个圆角更好看 */
+})");
 
     ui->tableWidget_portSelect->setRowCount(SparameterData.portNum);
     ui->tableWidget_portSelect->setColumnCount(SparameterData.portNum);
@@ -255,90 +266,25 @@ void MainWindow::on_loadSParameterFile()
     ui->comboBox_SParameetrfile->setCurrentIndex(ui->comboBox_SParameetrfile->count()-1);
     ui->tableWidget_portSelect->clearSelection();
     ui->customplot->clearGraphs();
-
-    // TODO: 在这里读取/导入 fileName
 }
 
 void MainWindow::on_showSparameterCurve()
 {
     ui->customplot->clearGraphs();
 
-
-    QList<QTableWidgetItem*> selectItems = ui->tableWidget_portSelect->selectedItems();
-
-    int graphColorCount = selectItems.size();
-    if(ui->comboBox_dataType->currentData().toString() == "RI")
+    if(ui->tabWidget_character->currentWidget() == ui->tab_groupDelay
+        && ui->checkBox_VSWR->isChecked())
     {
-        graphColorCount = graphColorCount*2;
-    }
+        QList<QTableWidgetItem*> selectItems = ui->tableWidget_portSelect->selectedItems();
+        int graphColorCount = selectItems.size();
 
+        std::vector<std::vector<std::vector<double>>> groupDelayValue;
+        computeGroupDelay(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI,groupDelayValue);
 
+        // 假设你已经在界面中放置了一个 QCustomPlot 控件，并命名为 customPlot
+        int graphCount = 0;
+        for (const QTableWidgetItem* item : selectItems) {
 
-
-    std::vector<std::vector<std::vector<std::complex<double>>>> currentParameter;
-    if(ui->comboBox_parameterType->currentData().toString() == "S")
-    {
-        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI;
-    }
-    else if(ui->comboBox_parameterType->currentData().toString() == "Y")
-    {
-        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].yparametrRI;
-    }
-    else if(ui->comboBox_parameterType->currentData().toString() == "Z")
-    {
-        currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].zparametrRI;
-    }
-
-    // 假设你已经在界面中放置了一个 QCustomPlot 控件，并命名为 customPlot
-    int graphCount = 0;
-    for (const QTableWidgetItem* item : selectItems) {
-
-        // 2. 添加一个曲线图 (Graph)
-        QCPGraph* graph = ui->customplot->addGraph();
-        // 自动生成颜色：色相均匀分布，饱和度和亮度固定
-        int hue = ((graphCount+1) * 360 / graphColorCount) % 360;
-        QColor color = QColor::fromHsv(hue, 200, 255);
-        graph->setPen(QPen(color, 2));   // 线宽 2
-
-        if(ui->comboBox_dataType->currentData().toString() == "MAG")
-        {
-            QVector<double> sparameterFrequecny;
-            QVector<double> sparameterMag;
-
-            for(int i=0;i<(int)currentParameter.size();i++)
-            {
-                sparameterMag.push_back(std::abs(currentParameter[i][item->row()][item->column()]));
-                sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
-            }
-            // 3. 为曲线图设置数据
-            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
-
-            // 4. 为曲线图命名（会显示在图例中）
-            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)").arg(item->row()+1).arg(item->column()+1));
-
-            // 5. 设置坐标轴标签
-            ui->customplot->xAxis->setLabel("Frequency");
-            ui->customplot->yAxis->setLabel("Mag");
-        }
-        else if(ui->comboBox_dataType->currentData().toString() == "RI")
-        {
-            QVector<double> sparameterFrequecny;
-            QVector<double> sparameterReal;
-            QVector<double> sparameterImag;
-
-            for(int i=0;i<(int)currentParameter.size();i++)
-            {
-                sparameterReal.push_back(currentParameter[i][item->row()][item->column()].real());
-                sparameterImag.push_back(currentParameter[i][item->row()][item->column()].imag());
-                sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
-            }
-            // 3. 为曲线图设置数据
-            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterReal);
-
-            // 4. 为曲线图命名（会显示在图例中）
-            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-real").arg(item->row()+1).arg(item->column()+1));
-
-            graphCount++;
             // 2. 添加一个曲线图 (Graph)
             QCPGraph* graph = ui->customplot->addGraph();
             // 自动生成颜色：色相均匀分布，饱和度和亮度固定
@@ -346,47 +292,155 @@ void MainWindow::on_showSparameterCurve()
             QColor color = QColor::fromHsv(hue, 200, 255);
             graph->setPen(QPen(color, 2));   // 线宽 2
 
-            // 3. 为曲线图设置数据
-            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterImag);
-
-            // 4. 为曲线图命名（会显示在图例中）
-            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-imag").arg(item->row()+1).arg(item->column()+1));
-
-            // 5. 设置坐标轴标签
-            ui->customplot->xAxis->setLabel("Frequency");
-            ui->customplot->yAxis->setLabel("Real/Imag");
-        }
-        else if(ui->comboBox_dataType->currentData().toString() == "DB")
-        {
             QVector<double> sparameterFrequecny;
-            QVector<double> sparameterDB;
+            QVector<double> sparameterMag;
 
-            for(int i=0;i<(int)currentParameter.size();i++)
+            for(int i=0;i<(int)groupDelayValue.size();i++)
             {
-                sparameterDB.push_back(20*std::log(abs(currentParameter[i][item->row()][item->column()])));
+                sparameterMag.push_back(std::abs(groupDelayValue[i][item->row()][item->column()]));
                 sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
             }
             // 3. 为曲线图设置数据
-            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterDB);
+            ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
 
             // 4. 为曲线图命名（会显示在图例中）
-            ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-db").arg(item->row()+1).arg(item->column()+1));
+            ui->customplot->graph(graphCount)->setName(QString("VSWR(%1,%2)").arg(item->row()+1).arg(item->column()+1));
 
             // 5. 设置坐标轴标签
             ui->customplot->xAxis->setLabel("Frequency");
-            ui->customplot->yAxis->setLabel("DB");
+            ui->customplot->yAxis->setLabel("VSWR");
+
+
+
+
+            graphCount++;
+        }
+    }
+    else
+    {
+        QList<QTableWidgetItem*> selectItems = ui->tableWidget_portSelect->selectedItems();
+
+        int graphColorCount = selectItems.size();
+        if(ui->comboBox_dataType->currentData().toString() == "RI")
+        {
+            graphColorCount = graphColorCount*2;
         }
 
-        graphCount++;
-    }
 
+
+
+        std::vector<std::vector<std::vector<std::complex<double>>>> currentParameter;
+        if(ui->comboBox_parameterType->currentData().toString() == "S")
+        {
+            currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI;
+        }
+        else if(ui->comboBox_parameterType->currentData().toString() == "Y")
+        {
+            currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].yparametrRI;
+        }
+        else if(ui->comboBox_parameterType->currentData().toString() == "Z")
+        {
+            currentParameter = m_loadSParameterFile[m_currentSnpFileVariant].zparametrRI;
+        }
+
+        // 假设你已经在界面中放置了一个 QCustomPlot 控件，并命名为 customPlot
+        int graphCount = 0;
+        for (const QTableWidgetItem* item : selectItems) {
+
+            // 2. 添加一个曲线图 (Graph)
+            QCPGraph* graph = ui->customplot->addGraph();
+            // 自动生成颜色：色相均匀分布，饱和度和亮度固定
+            int hue = ((graphCount+1) * 360 / graphColorCount) % 360;
+            QColor color = QColor::fromHsv(hue, 200, 255);
+            graph->setPen(QPen(color, 2));   // 线宽 2
+
+            if(ui->comboBox_dataType->currentData().toString() == "MAG")
+            {
+                QVector<double> sparameterFrequecny;
+                QVector<double> sparameterMag;
+
+                for(int i=0;i<(int)currentParameter.size();i++)
+                {
+                    sparameterMag.push_back(std::abs(currentParameter[i][item->row()][item->column()]));
+                    sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+                }
+                // 3. 为曲线图设置数据
+                ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterMag);
+
+                // 4. 为曲线图命名（会显示在图例中）
+                ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)").arg(item->row()+1).arg(item->column()+1));
+
+                // 5. 设置坐标轴标签
+                ui->customplot->xAxis->setLabel("Frequency");
+                ui->customplot->yAxis->setLabel("Mag");
+            }
+            else if(ui->comboBox_dataType->currentData().toString() == "RI")
+            {
+                QVector<double> sparameterFrequecny;
+                QVector<double> sparameterReal;
+                QVector<double> sparameterImag;
+
+                for(int i=0;i<(int)currentParameter.size();i++)
+                {
+                    sparameterReal.push_back(currentParameter[i][item->row()][item->column()].real());
+                    sparameterImag.push_back(currentParameter[i][item->row()][item->column()].imag());
+                    sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+                }
+                // 3. 为曲线图设置数据
+                ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterReal);
+
+                // 4. 为曲线图命名（会显示在图例中）
+                ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-real").arg(item->row()+1).arg(item->column()+1));
+
+                graphCount++;
+                // 2. 添加一个曲线图 (Graph)
+                QCPGraph* graph = ui->customplot->addGraph();
+                // 自动生成颜色：色相均匀分布，饱和度和亮度固定
+                int hue = ((graphCount+1) * 360 / graphColorCount) % 360;
+                QColor color = QColor::fromHsv(hue, 200, 255);
+                graph->setPen(QPen(color, 2));   // 线宽 2
+
+                // 3. 为曲线图设置数据
+                ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterImag);
+
+                // 4. 为曲线图命名（会显示在图例中）
+                ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-imag").arg(item->row()+1).arg(item->column()+1));
+
+                // 5. 设置坐标轴标签
+                ui->customplot->xAxis->setLabel("Frequency");
+                ui->customplot->yAxis->setLabel("Real/Imag");
+            }
+            else if(ui->comboBox_dataType->currentData().toString() == "DB")
+            {
+                QVector<double> sparameterFrequecny;
+                QVector<double> sparameterDB;
+
+                for(int i=0;i<(int)currentParameter.size();i++)
+                {
+                    sparameterDB.push_back(20*std::log(abs(currentParameter[i][item->row()][item->column()])));
+                    sparameterFrequecny.push_back(m_loadSParameterFile[m_currentSnpFileVariant].frequency[i]);
+                }
+                // 3. 为曲线图设置数据
+                ui->customplot->graph(graphCount)->setData(sparameterFrequecny, sparameterDB);
+
+                // 4. 为曲线图命名（会显示在图例中）
+                ui->customplot->graph(graphCount)->setName(QString("S(%1,%2)-db").arg(item->row()+1).arg(item->column()+1));
+
+                // 5. 设置坐标轴标签
+                ui->customplot->xAxis->setLabel("Frequency");
+                ui->customplot->yAxis->setLabel("DB");
+            }
+
+            graphCount++;
+        }
+    }
 
 
 
     // 6. 设置坐标轴显示范围
     // ui->customplot->xAxis->setRange(-1, 1);
     // ui->customplot->yAxis->setRange(0, 1);
-     ui->customplot->rescaleAxes();
+    ui->customplot->rescaleAxes();
 
     // 7. 显示图例
     ui->customplot->legend->setVisible(true);
@@ -409,14 +463,24 @@ void MainWindow::on_switchCurrentSnpFile()
     ui->label_portNum->setText(QString::number(SparameterData.portNum));
     ui->label_Frequencies->setText(QString("%1 to %2, %3 points").arg(SparameterData.frequency[0]).arg(SparameterData.frequency[SparameterData.frequency.size()-1]).arg(SparameterData.frequency.size()));
     ui->label_portImpedance->setText(QString::number(SparameterData.referenceZ));
-    ui->label_reciprocity->setText(isReciprocal(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_reciprocity->setText(isReciprocal(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
     ui->label_reciprocity->setStyleSheet(R"(QLabel{
     color: black;
     background-color: #4CAF50; /* 绿色 */
     border-radius: 4px;        /* 可选：加个圆角更好看 */
 })");
-    ui->label_passivity->setText(isPassive(SparameterData.sparametrRI) ? "Yes" : "No");
-    ui->label_causality->setText(isCausal(SparameterData.sparametrRI) ? "Yes" : "No");
+    ui->label_passivity->setText(isPassive(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
+    ui->label_passivity->setStyleSheet(R"(QLabel{
+    color: black;
+    background-color: #4CAF50; /* 绿色 */
+    border-radius: 4px;        /* 可选：加个圆角更好看 */
+})");
+    ui->label_causality->setText(isCausal(SparameterData.sparametrRI) ? "     Yes     " : "     No     ");
+    ui->label_causality->setStyleSheet(R"(QLabel{
+    color: black;
+    background-color: #4CAF50; /* 绿色 */
+    border-radius: 4px;        /* 可选：加个圆角更好看 */
+})");
 
     ui->tableWidget_portSelect->setRowCount(SparameterData.portNum);
     ui->tableWidget_portSelect->setColumnCount(SparameterData.portNum);
@@ -436,7 +500,19 @@ void MainWindow::on_switchCharacterTab()
 {
     QWidget* currentPage = ui->tabWidget_character->currentWidget();
 
+    if(currentPage != ui->tab_groupDelay)
+    {
+        if(ui->checkBox_VSWR->isChecked())
+        {
+            ui->checkBox_VSWR->setChecked(false);
+        }
+    }
+
     if(currentPage == ui->tab_passivity)
+    {
+
+    }
+    else if(currentPage == ui->tab_groupDelay)
     {
 
     }
@@ -496,6 +572,11 @@ void MainWindow::on_plotSingularCurve()
 
 void MainWindow::on_passivityEnforce()
 {
+    if(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI.empty())
+    {
+        return;
+    }
+
     std::vector<std::vector<std::vector<std::complex<double>>>> passiveSparameter;
     passicityEnforce(m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI, passiveSparameter);
     m_loadSParameterFile[m_currentSnpFileVariant].sparametrRI = passiveSparameter;
@@ -517,7 +598,6 @@ void MainWindow::on_customPlotContextMenu(const QPoint &pos)
 
     QAction *pngAction     = exportMenu->addAction(tr("PNG (标准)"));
     QAction *pngHdAction   = exportMenu->addAction(tr("PNG (高清 2x)"));
-    QAction *pngTransAction= exportMenu->addAction(tr("PNG (透明背景)"));
     exportMenu->addSeparator();
     QAction *jpgAction     = exportMenu->addAction(tr("JPG"));
     QAction *bmpAction     = exportMenu->addAction(tr("BMP"));
@@ -538,7 +618,7 @@ void MainWindow::on_customPlotContextMenu(const QPoint &pos)
     QString filter;
     QString defaultPath = QDir::homePath() + "/plot";
 
-    if (selected == pngAction || selected == pngHdAction || selected == pngTransAction) {
+    if (selected == pngAction || selected == pngHdAction) {
         filter = "PNG 图片 (*.png)";
         defaultPath += ".png";
     } else if (selected == jpgAction) {
@@ -561,13 +641,7 @@ void MainWindow::on_customPlotContextMenu(const QPoint &pos)
         ok = ui->customplot->savePng(fileName);
     } else if (selected == pngHdAction) {
         ok = ui->customplot->savePng(fileName, 0, 0, 2.0);  // 2 倍分辨率
-    } else if (selected == pngTransAction) {
-        // 临时把背景设为透明
-        QBrush oldBrush = ui->customplot->background();
-        ui->customplot->setBackground(QBrush(Qt::NoBrush));
-        ok = ui->customplot->savePng(fileName);
-        ui->customplot->setBackground(oldBrush);  // 恢复
-    } else if (selected == jpgAction) {
+    }  else if (selected == jpgAction) {
         ok = ui->customplot->saveJpg(fileName, 0, 0, 1.0, 90);
     } else if (selected == bmpAction) {
         ok = ui->customplot->saveBmp(fileName);
@@ -587,19 +661,81 @@ void MainWindow::on_mouseMove(QMouseEvent *event)
     double x = ui->customplot->xAxis->pixelToCoord(event->pos().x());
     double y = ui->customplot->yAxis->pixelToCoord(event->pos().y());
 
+    std::map<QString, double> graphInfo = valuesAtX(ui->customplot, x);
+
+    QString info = QString("x = %1").arg(x);
+    for(const auto& graphInfoValue : graphInfo)
+    {
+        info += QString("\n%1 %2").arg(graphInfoValue.first).arg(graphInfoValue.second);
+    }
+
     m_vLine->start->setCoords(x, ui->customplot->yAxis->range().lower);
     m_vLine->end->setCoords(x, ui->customplot->yAxis->range().upper);
     m_vLine->setVisible(true);
 
-    m_hLine->start->setCoords(ui->customplot->xAxis->range().lower, y);
-    m_hLine->end->setCoords(ui->customplot->xAxis->range().upper, y);
-    m_hLine->setVisible(true);
-
     m_cursorText->position->setCoords(x, y);
-    m_cursorText->setText(QString("x = %1\ny = %2")
-                              .arg(x, 0, 'f', 4)
-                              .arg(y, 0, 'f', 4));
+    m_cursorText->setText(info);
     m_cursorText->setVisible(true);
 
     ui->customplot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::on_VSWRChecked()
+{
+    if(ui->checkBox_VSWR->isChecked())
+    {
+        for(int row=0;row<m_loadSParameterFile[m_currentSnpFileVariant].portNum;row++)
+        {
+            for(int col=0;col<m_loadSParameterFile[m_currentSnpFileVariant].portNum;col++)
+            {
+                if(row != col && ui->tableWidget_portSelect->item(row, col))
+                {
+                    ui->tableWidget_portSelect->item(row, col)->setFlags(ui->tableWidget_portSelect->item(row, col)->flags() & ~(Qt::ItemIsEnabled |
+                                                                                                                                 Qt::ItemIsEditable |
+                                                                                                                                 Qt::ItemIsSelectable));
+                }
+            }
+        }
+    }
+    else
+    {
+        for(int row=0;row<m_loadSParameterFile[m_currentSnpFileVariant].portNum;row++)
+        {
+            for(int col=0;col<m_loadSParameterFile[m_currentSnpFileVariant].portNum;col++)
+            {
+                if(row != col && ui->tableWidget_portSelect->item(row, col))
+                {
+                    ui->tableWidget_portSelect->item(row, col)->setFlags(ui->tableWidget_portSelect->item(row, col)->flags() | Qt::ItemIsEnabled |
+                                                                         Qt::ItemIsEditable |
+                                                                         Qt::ItemIsSelectable);
+                }
+            }
+        }
+    }
+}
+
+// 返回每条 graph 在 queryX 处的 y（线性插值）
+ std::map<QString, double> MainWindow::valuesAtX(QCustomPlot *plot, double queryX)
+{
+     std::map<QString, double> ys;
+    // ys.reserve(plot->graphCount());
+    for (int i = 0; i < plot->graphCount(); ++i) {
+        std::pair<QString, double> graphInfo;
+        auto data = plot->graph(i)->data();
+        if (data->isEmpty()) { graphInfo.second = qQNaN(); continue; }
+
+        auto it = data->findBegin(queryX);
+        if (it == data->constBegin())      graphInfo.second = it->value;
+        else if (it == data->constEnd())   graphInfo.second = std::prev(it)->value;
+        else {
+            auto p = std::prev(it);
+            double dx = it->key - p->key;
+            graphInfo.second = (qFuzzyIsNull(dx) ? p->value
+                                       : p->value + (it->value - p->value) * (queryX - p->key) / dx);
+        }
+
+        graphInfo.first = plot->graph(i)->name();
+        ys.insert(graphInfo);
+    }
+    return ys;
 }

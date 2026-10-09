@@ -31,6 +31,8 @@ private:
 
     void initStyleSheet();
 
+    std::map<QString, double> valuesAtX(QCustomPlot *plot, double queryX);
+
 private slots:
     void on_loadSParameterFile();
 
@@ -47,6 +49,8 @@ private slots:
     void on_customPlotContextMenu(const QPoint &pos);
 
     void on_mouseMove(QMouseEvent *event);
+
+    void on_VSWRChecked();
 
 private:
     Ui::MainWindow *ui;

@@ -28,3 +28,6 @@ void s2z(const std::vector<std::vector<std::vector<std::complex<double>>>>& sPar
 
 void passicityEnforce(const std::vector<std::vector<std::vector<std::complex<double>>>>& sParameterDataRI,
                       std::vector<std::vector<std::vector<std::complex<double>>>>& sParameterDataRIPassive);
+
+void computeGroupDelay(const std::vector<std::vector<std::vector<std::complex<double>>>>& sParameterDataRI,
+                       std::vector<std::vector<std::vector<double>>>& sParameterDataGroupDelay);

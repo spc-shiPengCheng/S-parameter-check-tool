@@ -252,3 +252,29 @@ void passicityEnforce(const std::vector<std::vector<std::vector<std::complex<dou
         }
     }
 }
+
+void computeGroupDelay(const std::vector<std::vector<std::vector<std::complex<double> > > > &sParameterDataRI,
+                       std::vector<std::vector<std::vector<double> > > &sParameterDataGroupDelay)
+{
+    if(sParameterDataRI.empty())
+    {
+        qDebug() << QString("S parameter is empty.");
+        return ;
+    }
+
+    size_t portNum = sParameterDataRI[0].size();
+    size_t frequencyNum = sParameterDataRI.size();
+    sParameterDataGroupDelay.clear();
+    sParameterDataGroupDelay.resize(frequencyNum,std::vector<std::vector<double> >(portNum, std::vector<double>(portNum,0)));
+
+    for(int freq=0;freq<frequencyNum;freq++)
+    {
+        for(int i=0;i<portNum;i++)
+        {
+            for(int j=0;j<portNum;j++)
+            {
+                sParameterDataGroupDelay[freq][i][j] = (1 + std::abs(sParameterDataRI[freq][i][j]))/(1 - std::abs(sParameterDataRI[freq][i][j]));
+            }
+        }
+    }
+}
