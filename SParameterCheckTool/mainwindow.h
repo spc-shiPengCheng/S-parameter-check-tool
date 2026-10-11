@@ -33,6 +33,8 @@ private:
 
     std::map<QString, double> valuesAtX(QCustomPlot *plot, double queryX);
 
+    bool eventFilter(QObject *watched, QEvent *event);
+
 private slots:
     void on_loadSParameterFile();
 

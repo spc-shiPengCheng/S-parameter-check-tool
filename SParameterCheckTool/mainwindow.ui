@@ -183,11 +183,6 @@
           <property name="currentIndex">
            <number>0</number>
           </property>
-          <widget class="QWidget" name="tab_reciprocity">
-           <attribute name="title">
-            <string>Reciprocity</string>
-           </attribute>
-          </widget>
           <widget class="QWidget" name="tab_passivity">
            <attribute name="title">
             <string>Passivity</string>

@@ -27,6 +27,10 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete m_vLine;
+    delete m_hLine;
+    delete m_cursorText;
+
     delete ui;
 }
 
@@ -59,6 +63,10 @@ void MainWindow::initDialog()
 
     // 允许水平和垂直方向滚轮缩放
     ui->customplot->axisRect()->setRangeZoom(Qt::Horizontal | Qt::Vertical);
+
+    ui->customplot->setMouseTracking(true);
+
+    ui->customplot->installEventFilter(this);
 
     m_vLine = new QCPItemLine(ui->customplot);
     m_vLine->setPen(QPen(Qt::gray, 1, Qt::DashLine));
@@ -661,7 +669,12 @@ void MainWindow::on_mouseMove(QMouseEvent *event)
     double x = ui->customplot->xAxis->pixelToCoord(event->pos().x());
     double y = ui->customplot->yAxis->pixelToCoord(event->pos().y());
 
+
     std::map<QString, double> graphInfo = valuesAtX(ui->customplot, x);
+    if(graphInfo.empty())
+    {
+        return;
+    }
 
     QString info = QString("x = %1").arg(x);
     for(const auto& graphInfoValue : graphInfo)
@@ -678,6 +691,7 @@ void MainWindow::on_mouseMove(QMouseEvent *event)
     m_cursorText->setVisible(true);
 
     ui->customplot->replot(QCustomPlot::rpQueuedReplot);
+
 }
 
 void MainWindow::on_VSWRChecked()
@@ -738,4 +752,52 @@ void MainWindow::on_VSWRChecked()
         ys.insert(graphInfo);
     }
     return ys;
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->customplot)
+    {
+        if (event->type() == QEvent::Leave)
+        {
+            // 鼠标离开控件，隐藏所有浮层
+            m_vLine->setVisible(false);
+            m_cursorText->setVisible(false);
+            ui->customplot->replot(QCustomPlot::rpQueuedReplot);
+        }
+        else if (event->type() == QEvent::MouseMove)
+        {
+            QMouseEvent *me = static_cast<QMouseEvent*>(event);
+            double x = ui->customplot->xAxis->pixelToCoord(me->pos().x());
+            double y = ui->customplot->yAxis->pixelToCoord(me->pos().y());
+
+            // 更精确：判断是否在绘图区内
+            if (ui->customplot->axisRect()->rect().contains(me->pos()) && !valuesAtX(ui->customplot, x).empty())
+            {
+                std::map<QString, double> graphInfo = valuesAtX(ui->customplot, x);
+
+                QString info = QString("x = %1").arg(x);
+                for (const auto& graphInfoValue : graphInfo)
+                {
+                    info += QString("\n%1 %2").arg(graphInfoValue.first).arg(graphInfoValue.second);
+                }
+
+                m_vLine->start->setCoords(x, ui->customplot->yAxis->range().lower);
+                m_vLine->end->setCoords(x, ui->customplot->yAxis->range().upper);
+                m_vLine->setVisible(true);
+
+                m_cursorText->position->setCoords(x, y);
+                m_cursorText->setText(info);
+                m_cursorText->setVisible(true);
+            }
+            else
+            {
+                // 鼠标在控件内但不在绘图区（比如在图例、坐标轴标签上）
+                m_vLine->setVisible(false);
+                m_cursorText->setVisible(false);
+            }
+            ui->customplot->replot(QCustomPlot::rpQueuedReplot);
+        }
+    }
+    return QMainWindow::eventFilter(watched, event); // 或 QWidget::eventFilter
 }
