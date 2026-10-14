@@ -31,3 +31,9 @@ void passicityEnforce(const std::vector<std::vector<std::vector<std::complex<dou
 
 void computeGroupDelay(const std::vector<std::vector<std::vector<std::complex<double>>>>& sParameterDataRI,
                        std::vector<std::vector<std::vector<double>>>& sParameterDataGroupDelay);
+
+double calculate_cqmi_matrix(
+    const std::vector<std::vector<std::vector<std::complex<double>>>>& s_matrix);
+
+double calculate_cqmi_1port(const std::vector<std::complex<double>>& s) ;
+
